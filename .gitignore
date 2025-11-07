@@ -1,0 +1,16 @@
+# Ignore data folders and JSON data files
+/车次信息/
+*.json
+
+# Python caches and virtual envs (optional, safe defaults)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
