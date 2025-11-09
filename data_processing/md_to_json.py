@@ -24,7 +24,7 @@
 说明：
 1. 起点与终点站根据该车次首个和最后一个有时间的站确定。
 2. is_fast 判断逻辑：在首末站之间存在未停靠（时间为空）站则为 True，否则 False。
-3. 若不同文件出现相同车次 ID，将自动追加后缀 "#2", "#3" 以保证唯一。
+3. 若不同文件出现相同车次 ID，后续重复将被忽略，不再重复统计。
 """
 from __future__ import annotations
 
@@ -192,15 +192,16 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
             if not headers or not data_rows:
                 raise ValueError("未识别到有效的 Markdown 表格。")
             extracted = extract_trains_from_table(headers, data_rows)
+            unique_added = 0
             for tr in extracted:
                 orig_id = tr["id"]
                 if orig_id in id_count:
-                    id_count[orig_id] += 1
-                    tr["id"] = f"{orig_id}#{id_count[orig_id]}"  # 追加后缀保证唯一
-                else:
-                    id_count[orig_id] = 1
+                    # 重复出现：不再追加后缀，不统计，直接跳过
+                    continue
+                id_count[orig_id] = 1
                 trains.append(tr)
-            print(f"[文件] {md_path.name} 车次提取 {len(extracted)} 条")
+                unique_added += 1
+            print(f"[文件] {md_path.name} 车次提取 {len(extracted)} 条，新增唯一 {unique_added} 条，跳过重复 {len(extracted) - unique_added} 条")
             processed += 1
         except Exception as e:
             print(f"[跳过] {md_path.name}: {e}")
