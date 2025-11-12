@@ -116,6 +116,7 @@ def compute_metrics(services: List[Dict[str, Any]], train_map: Dict[str, Dict[st
 def try_plot(metrics: List[Dict[str, Any]], out_dir: Path) -> None:
     try:
         import matplotlib.pyplot as plt  # type: ignore
+        plt.rcParams['font.family'] = 'Microsoft YaHei'  # 替换为你选择的字体
     except Exception:
         print("[图表] matplotlib 不可用，跳过可视化生成。可使用 'pip install matplotlib' 安装后重试。")
         return

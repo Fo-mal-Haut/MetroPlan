@@ -3,7 +3,7 @@
 """将“车次信息”目录下多个 Markdown 时刻表聚合为一个 schedule_list.json。
 
 使用方法：
-        python md_to_json.py --dir "车次信息" --output schedule_list.json
+        python data_processing/md_to_json.py --dir "车次信息" --output schedule_list.json
 
 输出：聚合后的单一 JSON 文件，结构：
 {
@@ -165,7 +165,8 @@ def extract_trains_from_table(headers: List[str], rows: List[List[str]]) -> List
             "start_station": station_order[start_idx],
             "end_station": station_order[end_idx],
             "is_fast": is_fast,
-            "stations": [{"name": st, "time": t} for (_, st, t) in stops]
+            "stations": [{"name": st, "time": t} for (_, st, t) in stops],
+            "raw_time_count": len(stops)  # 该车次列的非空时间单元格数
         })
     return result
 
@@ -184,6 +185,9 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
     trains: List[Dict[str, Any]] = []
     id_count: Dict[str, int] = {}
     processed, skipped = 0, 0
+    raw_time_cells_total = 0  # 所有 .md 表格中非空时间单元格计数（包含重复车次）
+    raw_time_cells_dedup_total = 0  # 去重后的原始时间单元格计数（仅首个出现的车次）
+    train_raw_times: Dict[str, int] = {}  # 记录每个车次的原始时间单元格数
 
     for md_path in md_files:
         try:
@@ -191,6 +195,12 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
             headers, data_rows = parse_markdown_table(text)
             if not headers or not data_rows:
                 raise ValueError("未识别到有效的 Markdown 表格。")
+            # 统计原始表中的时间单元格数量（所有列除了第一列，非空且非停靠空白）
+            for row in data_rows[1:]:  # 跳过第一行数据行与提取逻辑一致
+                for cell in row[1:]:   # 跳过第一列站名列
+                    if cell and not _is_empty_time(cell):
+                        raw_time_cells_total += 1
+
             extracted = extract_trains_from_table(headers, data_rows)
             unique_added = 0
             for tr in extracted:
@@ -200,6 +210,10 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
                     continue
                 id_count[orig_id] = 1
                 trains.append(tr)
+                train_raw_times[orig_id] = tr["raw_time_count"]  # 记录原始时间单元格数
+                # 累计去重后的原始时间单元格（与 JSON 将保留的一致）
+                if isinstance(tr.get("stations"), list):
+                    raw_time_cells_dedup_total += len(tr["stations"])
                 unique_added += 1
             print(f"[文件] {md_path.name} 车次提取 {len(extracted)} 条，新增唯一 {unique_added} 条，跳过重复 {len(extracted) - unique_added} 条")
             processed += 1
@@ -207,9 +221,55 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
             print(f"[跳过] {md_path.name}: {e}")
             skipped += 1
 
-    out_obj = {"train": trains, "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")}
+    # 统计 JSON 中的时间单元格数量（所有车次的停靠记录）
+    json_time_cells_total = 0
+    for tr in trains:
+        stations_list = tr.get("stations") or []
+        if isinstance(stations_list, list):
+            json_time_cells_total += len(stations_list)
+
+    # 按车次对比原始时间单元格数与 JSON 停靠数
+    train_time_match = []
+    for tr in trains:
+        orig_id = tr["id"]
+        raw_count = train_raw_times.get(orig_id, 0)
+        json_count = len(tr["stations"])
+        if raw_count != json_count:
+            train_time_match.append({
+                "train_id": orig_id,
+                "raw_count": raw_count,
+                "json_count": json_count
+            })
+
+    out_obj = {
+        "train": trains,
+        "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "_time_count": {
+            "raw_md_time_cells": raw_time_cells_total,
+            "raw_md_time_cells_dedup": raw_time_cells_dedup_total,
+            "json_time_cells": json_time_cells_total,
+            "matched_total_vs_json": raw_time_cells_total == json_time_cells_total,
+            "matched_dedup_vs_json": raw_time_cells_dedup_total == json_time_cells_total
+        },
+        "train_time_match": train_time_match
+    }
     output_path.write_text(json.dumps(out_obj, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[完成] 聚合输出 -> {output_path} (总车次:{len(trains)}, 成功文件:{processed}, 跳过文件:{skipped})")
+    print("[校验] 原始时间单元格(含重复): {} | 原始时间单元格(去重): {} | JSON 时间单元格: {}".format(
+        raw_time_cells_total, raw_time_cells_dedup_total, json_time_cells_total
+    ))
+    print("[校验] 去重对比: {} | 总量对比: {}".format(
+        "OK" if raw_time_cells_dedup_total == json_time_cells_total else "MISMATCH",
+        "OK" if raw_time_cells_total == json_time_cells_total else "MISMATCH"
+    ))
+    if train_time_match:
+        print(f"[校验] 按车次时间单元格不匹配: {len(train_time_match)} 条")
+        for mismatch in train_time_match[:10]:  # 最多显示前10个
+            print(f"  - {mismatch['train_id']}: 原始 {mismatch['raw_count']} vs JSON {mismatch['json_count']}")
+        if len(train_time_match) > 10:
+            print(f"  ... 还有 {len(train_time_match) - 10} 条不匹配")
+    else:
+        print("[校验] 按车次时间单元格: OK")
 
 
 def main():

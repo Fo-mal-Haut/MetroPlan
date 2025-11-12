@@ -4,10 +4,11 @@
 根据 schedule_list.json 统计交路（service）：
 - 按 (start_station, end_station, is_fast) 分组
 - 聚合同组内所有车次 id
+- 统计每个交路经过的站点 station（按各车次中的平均相对顺序排序）
 - 生成输出 service_list.json
 
 用法：
-  python generate_service_list.py --input ../schedule_list.json --output ../service_list.json
+    python generate_service_list.py --input ../schedule_list.json --output ../service_list.json
 """
 from __future__ import annotations
 
@@ -20,6 +21,8 @@ from typing import Any, Dict, List, Tuple
 
 def build_services(trains: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     groups: Dict[Tuple[str, str, bool], List[str]] = defaultdict(list)
+    # 预构建：车次ID -> 站名列表（保持顺序）
+    id_to_stations: Dict[str, List[str]] = {}
     for tr in trains:
         if not isinstance(tr, dict):
             continue
@@ -33,6 +36,17 @@ def build_services(trains: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             # 忽略没有 id 的条目
             continue
         groups[(sid, eid, is_fast)].append(tid)
+        # 提取站名序列
+        stations_list = tr.get("stations") or tr.get("station") or []
+        names: List[str] = []
+        if isinstance(stations_list, list):
+            for s in stations_list:
+                if isinstance(s, dict):
+                    name = (s.get("name") or "").strip()
+                    if name:
+                        names.append(name)
+        if tid and names:
+            id_to_stations[tid] = names
 
     services: List[Dict[str, Any]] = []
     for (sid, eid, is_fast), ids in groups.items():
@@ -43,12 +57,23 @@ def build_services(trains: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if x not in seen:
                 seen.add(x)
                 ordered_ids.append(x)
+        # 统计交路经过的站点（按平均相对位置排序）
+        pos_sum: Dict[str, float] = {}
+        pos_cnt: Dict[str, int] = {}
+        for tid in ordered_ids:
+            seq = id_to_stations.get(tid) or []
+            for idx, name in enumerate(seq):
+                pos_sum[name] = pos_sum.get(name, 0.0) + idx
+                pos_cnt[name] = pos_cnt.get(name, 0) + 1
+        # 计算平均位置并排序
+        stations_ordered = sorted(pos_sum.keys(), key=lambda n: (pos_sum[n] / max(1, pos_cnt.get(n, 1))))
         services.append({
             "id": f"{sid}__{eid}__{'fast' if is_fast else 'slow'}",
             "start_station": sid,
             "end_station": eid,
             "is_fast": is_fast,
             "train": ordered_ids,
+            "station": stations_ordered,
         })
 
     # 可按 id 或起终点排序，便于稳定输出
