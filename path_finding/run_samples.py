@@ -20,13 +20,16 @@ def log(msg: str):
 SCRIPT_DIR = Path(__file__).parent.resolve()
 GRAPH_PATH = (SCRIPT_DIR / "../graph/timetable_graph.json").resolve()
 
-cases = [
-    ("飞霞", "惠州北", "06:00", SCRIPT_DIR / "paths_fx_hzb_0600.json"),
-    ("飞霞", "惠州北", "08:00", SCRIPT_DIR / "paths_fx_hzb_0800.json"),
-    ("肇庆", "惠州北", "06:00", SCRIPT_DIR / "paths_zq_hzb_0600.json"),
-    ("惠州北", "飞霞", "06:00", SCRIPT_DIR / "paths_hzb_fx_0600.json"),
-]
+# cases = [
+#     ("飞霞", "惠州北", "06:00", SCRIPT_DIR / "paths_fx_hzb_0600.json"),
+#     ("飞霞", "惠州北", "08:00", SCRIPT_DIR / "paths_fx_hzb_0800.json"),
+#     ("肇庆", "惠州北", "06:00", SCRIPT_DIR / "paths_zq_hzb_0600.json"),
+#     ("惠州北", "飞霞", "06:00", SCRIPT_DIR / "paths_hzb_fx_0600.json"),
+# ]
 
+cases = [
+    ("西平西", "琶洲", "06:00", SCRIPT_DIR / "paths_xpx_pz_0600.json"),
+]
 
 def main():
     log(f"SCRIPT_DIR={SCRIPT_DIR}")

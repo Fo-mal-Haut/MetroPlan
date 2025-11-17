@@ -163,8 +163,8 @@ def find_paths(
         heapq.heappush(heap, (t, seq, node, [], 0, frozenset({node[1]}), node[2]))
 
     results: List[Dict[str, Any]] = []
-    # dominance[station] = [(best_time, transfers), ...]
-    dominance: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+    # dominance[(station, train)] = [(best_time, transfers), ...]
+    dominance: Dict[Tuple[str, str], List[Tuple[int, int]]] = defaultdict(list)
 
     while heap and len(results) < max_paths:
         curr_time, _, curr_node, path, transfers, used_trains, first_dep_str = heapq.heappop(heap)
@@ -174,11 +174,12 @@ def find_paths(
 
         curr_station, curr_train, curr_time_str = curr_node
 
-        # dominance 剪枝（按站点聚类）
-        st_states = dominance[curr_station]
+        # dominance 剪枝（按站点 + 当前车次聚类，避免不同车次互相剪枝）
+        dom_key = (curr_station, curr_train)
+        st_states = dominance[dom_key]
         if dominated(curr_time, transfers, st_states):
             continue
-        dominance[curr_station] = update_dominance(curr_time, transfers, st_states)
+        dominance[dom_key] = update_dominance(curr_time, transfers, st_states)
 
         # 到达终点：保存方案
         if curr_station == end_station and path:
