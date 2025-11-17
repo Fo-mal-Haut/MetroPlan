@@ -53,7 +53,7 @@ def find_all_paths(nodes, adj, start_station, end_station, train_info):
     # Find all starting nodes at start_station
     start_nodes = [i for i, node in enumerate(nodes) if node[0] == start_station]
     
-    def dfs(current_node, current_arrival, path, visited_nodes, current_trains, current_transfers, start_time):
+    def dfs(current_node, current_arrival, path, visited_nodes, current_trains, current_transfers, start_time, transfer_count):
         current_station = nodes[current_node][0]
         
         if current_station == end_station:
@@ -75,29 +75,36 @@ def find_all_paths(nodes, adj, start_station, end_station, train_info):
         
         # Explore neighbors
         for neighbor, travel_time in adj[current_node]:
-            if neighbor in visited_nodes:
-                continue
+            # if neighbor in visited_nodes:  # Temporarily remove to check for cycles
+            #     continue
             neighbor_station = nodes[neighbor][0]
             neighbor_train = nodes[neighbor][1]
             neighbor_time = parse_time(nodes[neighbor][2])
             
             arrival_time = current_arrival + travel_time
-            transfer_time = -10  # allow some flexibility
+            transfer_time = -20  # More flexibility
             if neighbor_time <= arrival_time + transfer_time:
                 continue
             
             new_trains = current_trains + [neighbor_train]
             new_transfers = current_transfers[:]
+            new_transfer_count = transfer_count
             if neighbor_train != nodes[current_node][1]:
                 # Transfer at current_station
                 if current_station not in new_transfers:
                     new_transfers.append(current_station)
+                    new_transfer_count += 1
+                if new_transfer_count > 2:
+                    continue
             
-            dfs(neighbor, neighbor_time, path + [neighbor], visited_nodes | {neighbor}, new_trains, new_transfers, start_time)
+            dfs(neighbor, neighbor_time, path + [neighbor], visited_nodes | {neighbor}, new_trains, new_transfers, start_time, new_transfer_count)
+        
+        # Try transfers at current station if not end
+        # Removed due to recursion depth
     
     for start_node in start_nodes:
         start_time = parse_time(nodes[start_node][2])
-        dfs(start_node, start_time, [start_node], {start_node}, [nodes[start_node][1]], [], start_time)
+        dfs(start_node, start_time, [start_node], {start_node}, [nodes[start_node][1]], [], start_time, 0)
     
     return paths
 
