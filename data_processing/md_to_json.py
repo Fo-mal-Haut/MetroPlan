@@ -182,12 +182,12 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
         return
 
     print(f"[开始] 聚合 Markdown 时刻表：目录={folder}，文件数={len(md_files)}")
-    trains: List[Dict[str, Any]] = []
-    id_count: Dict[str, int] = {}
+    
+    # 使用字典存储车次，key 为车次 ID
+    trains_map: Dict[str, Dict[str, Any]] = {}
+    
     processed, skipped = 0, 0
     raw_time_cells_total = 0  # 所有 .md 表格中非空时间单元格计数（包含重复车次）
-    raw_time_cells_dedup_total = 0  # 去重后的原始时间单元格计数（仅首个出现的车次）
-    train_raw_times: Dict[str, int] = {}  # 记录每个车次的原始时间单元格数
 
     for md_path in md_files:
         try:
@@ -203,23 +203,36 @@ def aggregate_folder(folder: Path, encoding: str, output_path: Path) -> None:
 
             extracted = extract_trains_from_table(headers, data_rows)
             unique_added = 0
+            updated_count = 0
+            
             for tr in extracted:
-                orig_id = tr["id"]
-                if orig_id in id_count:
-                    # 重复出现：不再追加后缀，不统计，直接跳过
-                    continue
-                id_count[orig_id] = 1
-                trains.append(tr)
-                train_raw_times[orig_id] = tr["raw_time_count"]  # 记录原始时间单元格数
-                # 累计去重后的原始时间单元格（与 JSON 将保留的一致）
-                if isinstance(tr.get("stations"), list):
-                    raw_time_cells_dedup_total += len(tr["stations"])
-                unique_added += 1
-            print(f"[文件] {md_path.name} 车次提取 {len(extracted)} 条，新增唯一 {unique_added} 条，跳过重复 {len(extracted) - unique_added} 条")
+                tid = tr["id"]
+                if tid in trains_map:
+                    # 如果已存在，检查是否需要替换（保留站点更多的那个）
+                    existing = trains_map[tid]
+                    if len(tr["stations"]) > len(existing["stations"]):
+                        trains_map[tid] = tr
+                        updated_count += 1
+                else:
+                    trains_map[tid] = tr
+                    unique_added += 1
+            
+            print(f"[文件] {md_path.name} 车次提取 {len(extracted)} 条，新增唯一 {unique_added} 条，更新/替换 {updated_count} 条")
             processed += 1
         except Exception as e:
             print(f"[跳过] {md_path.name}: {e}")
             skipped += 1
+
+    trains = list(trains_map.values())
+    
+    # 重新计算去重后的统计信息
+    raw_time_cells_dedup_total = 0
+    train_raw_times = {}
+    for tr in trains:
+        # extract_trains_from_table adds raw_time_count
+        count = tr.get("raw_time_count", 0)
+        raw_time_cells_dedup_total += count
+        train_raw_times[tr["id"]] = count
 
     # 统计 JSON 中的时间单元格数量（所有车次的停靠记录）
     json_time_cells_total = 0
