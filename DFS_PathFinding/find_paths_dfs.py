@@ -1,267 +1,291 @@
+"""Enumerate intercity travel plans using fast_graph with explicit transfer edges.
+
+功能：
+    - 读取 `graph/fast_graph.json`（包含行车 + 换乘边）和 `schedule_list.json`；
+    - 以车站名字为起终点，深度优先遍历所有满足换乘次数上限的路径；
+    - 输出每条方案的车次序列、换乘细节、总时长等信息。
+
+使用方法示例：
+    python DFS_PathFinding/find_paths_dfs.py --start 琶洲 --end 西平西 \
+        --graph graph/fast_graph.json --schedule schedule_list.json \
+        --max_transfers 2
+    结果默认写入 `Result_Finding/path_起点_终点.json`。
+"""
+
 import json
 import argparse
 from pathlib import Path
+from typing import Dict, List, Any
 
-def load_graph(graph_file):
-    """Load the timetable graph from JSON file."""
+
+def load_graph(graph_file: Path):
+    """Load graph JSON and return (nodes, edges)."""
     with open(graph_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    nodes = data['nodes']
-    edges = data['edges']
-    return nodes, edges
+    return data['nodes'], data['edges']
 
-def load_schedule(schedule_file):
-    """Load schedule list to get train types."""
+
+def load_schedule(schedule_file: Path) -> Dict[str, bool]:
+    """Load schedule list to get train fast/slow classification."""
     with open(schedule_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    train_info = {train['id']: train['is_fast'] for train in data['train']}
-    return train_info
+    return {train['id']: train['is_fast'] for train in data['train']}
 
-def load_fast_stations(fast_station_file):
-    """Load fast station list for transfer validation."""
-    with open(fast_station_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    stations = set()
-    for item in data:
-        name = item['station_name']
-        # Normalize name: remove "（城际）" suffix if present
-        if "（城际）" in name:
-            name = name.replace("（城际）", "")
-        stations.add(name)
-    return stations
 
-def build_station_index(nodes):
-    """
-    Build an index for quick lookup of trains at each station.
-    Returns: { station_name: [(time_minutes, node_index, train_id), ...] }
-    """
-    station_index = {}
-    for i, node in enumerate(nodes):
-        station = node[0]
-        train_id = node[1]
-        time_str = node[2]
-        time_minutes = parse_time(time_str)
-        
-        if station not in station_index:
-            station_index[station] = []
-        station_index[station].append((time_minutes, i, train_id))
-    
-    # Sort by time for each station
-    for station in station_index:
-        station_index[station].sort(key=lambda x: x[0])
-        
-    return station_index
-
-def build_adjacency_list(nodes, edges):
-    """Build adjacency list from nodes and edges."""
-    node_to_index = {tuple(node): i for i, node in enumerate(nodes)}
-    adj = {i: [] for i in range(len(nodes))}
-    for edge in edges:
-        from_node = tuple(edge['from'])
-        to_node = tuple(edge['to'])
-        if from_node in node_to_index and to_node in node_to_index:
-            from_idx = node_to_index[from_node]
-            to_idx = node_to_index[to_node]
-            travel_time = edge.get('segment_travel_time', 1)
-            adj[from_idx].append((to_idx, travel_time))
-    return adj
-
-def parse_time(time_str):
-    """Parse time string HH:MM to minutes since midnight."""
+def parse_time(time_str: str) -> int:
+    """Parse HH:MM into minutes since midnight. "00:00" maps to next-day 24:00."""
+    if not time_str:
+        return 0
     if time_str == "00:00":
-        return 1440  # Next day
-    h, m = map(int, time_str.split(':'))
-    return h * 60 + m
+        return 1440
+    hours, minutes = map(int, time_str.split(':'))
+    return hours * 60 + minutes
 
-def to_time(minutes):
-    """Convert minutes to HH:MM format."""
-    if minutes >= 1440:
-        minutes -= 1440
-    h = minutes // 60
-    m = minutes % 60
-    return f"{h:02d}:{m:02d}"
 
-def get_travel_time(u_idx, v_idx, adj):
-    """Get travel time between two nodes from adjacency list."""
-    for neighbor, time in adj[u_idx]:
-        if neighbor == v_idx:
-            return time
-    return 0
+def to_time(total_minutes: int) -> str:
+    """Convert minutes since midnight into HH:MM, wrapping every 24 hours."""
+    total_minutes %= 1440
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    return f"{hours:02d}:{minutes:02d}"
 
-def analyze_path(path, nodes, adj, start_time):
-    """Analyze path to extract transfer details and precise arrival time."""
-    transfer_infos = []
-    last_arrival_time = start_time
-    
-    for i in range(len(path) - 1):
-        u = path[i]
-        v = path[i+1]
-        
-        if nodes[u][0] == nodes[v][0]:
-            # Transfer
-            dep_time_minutes = parse_time(nodes[v][2])
-            wait_time = dep_time_minutes - last_arrival_time
-            transfer_infos.append({
-                'station': nodes[u][0],
-                'arrival_time': to_time(last_arrival_time),
-                'departure_time': nodes[v][2],
-                'wait_minutes': wait_time
+
+def build_adjacency(nodes: List[List[str]], edges: List[Dict[str, Any]]):
+    """Construct adjacency list with edge metadata."""
+    node_lookup = {tuple(node): idx for idx, node in enumerate(nodes)}
+    adjacency: Dict[int, List[Dict[str, Any]]] = {idx: [] for idx in range(len(nodes))}
+
+    for edge in edges:
+        from_idx = node_lookup.get(tuple(edge['from']))
+        to_idx = node_lookup.get(tuple(edge['to']))
+        if from_idx is None or to_idx is None:
+            continue
+
+        duration = edge.get('weight') or edge.get('segment_travel_time') or 0
+        if duration <= 0:
+            continue
+
+        edge_info = {
+            'to': to_idx,
+            'type': edge.get('type', 'travel'),
+            'duration': duration,
+        }
+        adjacency[from_idx].append(edge_info)
+
+    return adjacency
+
+
+def summarize_path(nodes: List[List[str]],
+                   edge_history: List[Dict[str, Any]],
+                   train_sequence: List[str],
+                   start_time: int,
+                   end_time: int,
+                   train_info: Dict[str, bool]) -> Dict[str, Any]:
+    """Create a summary object for a completed path."""
+    timeline = start_time
+    transfer_details: List[Dict[str, Any]] = []
+
+    for edge in edge_history:
+        prev_time = timeline
+        timeline += edge['duration']
+        if edge['type'] == 'transfer':
+            station_name = nodes[edge['from']][0]
+            transfer_details.append({
+                'station': station_name,
+                'arrival_time': to_time(prev_time),
+                'departure_time': to_time(timeline),
+                'wait_minutes': edge['duration']
             })
-        else:
-            # Physical travel
-            t_time = get_travel_time(u, v, adj)
-            # For physical travel, we depart at nodes[u][2]
-            # But if we just transferred, nodes[u] is the new train node, so its time is departure time.
-            # If we didn't transfer, nodes[u] is the arrival node from previous step? 
-            # No, nodes in graph represent "Departure events" mostly, or "Stop events".
-            # The time in node is the schedule time.
-            
-            dep_time = parse_time(nodes[u][2])
-            last_arrival_time = dep_time + t_time
-            
-    return transfer_infos, last_arrival_time
 
-def find_all_paths(nodes, adj, start_station, end_station, train_info, fast_stations):
-    """Find all possible paths from start_station to end_station using DFS, including transfers."""
-    paths = []
-    
-    # Build station index for transfers
-    station_index = build_station_index(nodes)
-    
-    # Find all starting nodes at start_station
-    start_nodes = [i for i, node in enumerate(nodes) if node[0] == start_station]
-    
-    def dfs(current_node, current_arrival, path, visited_nodes, current_trains, current_transfers, start_time, transfer_count):
-        current_station = nodes[current_node][0]
-        
-        if current_station == end_station:
-            # Found a path to end_station
-            train_sequence = list(dict.fromkeys(current_trains))  # unique trains in order
-            
-            # Analyze path for precise details
-            transfer_details, final_arrival_minutes = analyze_path(path, nodes, adj, start_time)
-            
-            total_minutes = final_arrival_minutes - start_time
-            total_time_str = f"{total_minutes // 60}h {total_minutes % 60}m"
-            
-            is_fast = any(train_info.get(train, False) for train in train_sequence)
-            
-            paths.append({
-                'id': len(paths) + 1,
-                'type': 'Transfer' if transfer_details else 'Direct',
-                'train_sequence': train_sequence,
-                'transfer_details': transfer_details,
-                'departure_time': to_time(start_time),
-                'arrival_time': to_time(final_arrival_minutes),
-                'total_time': total_time_str,
-                'total_minutes': total_minutes,
-                'is_fast': is_fast
-            })
+    # Ensure final timeline matches recorded end time
+    if timeline != end_time:
+        timeline = end_time
+
+    total_minutes = timeline - start_time
+    if total_minutes < 0:
+        total_minutes += 1440
+
+    train_seq_copy = list(train_sequence)
+    is_fast = any(train_info.get(train_id, False) for train_id in train_seq_copy)
+
+    return {
+        'type': 'Transfer' if transfer_details else 'Direct',
+        'train_sequence': train_seq_copy,
+        'transfer_details': transfer_details,
+        'departure_time': to_time(start_time),
+        'arrival_time': to_time(timeline),
+        'total_time': f"{total_minutes // 60}h {total_minutes % 60}m",
+        'total_minutes': total_minutes,
+        'is_fast': is_fast,
+        'transfer_count': len(transfer_details)
+    }
+
+
+def find_all_paths(nodes: List[List[str]],
+                   adjacency: Dict[int, List[Dict[str, Any]]],
+                   start_station: str,
+                   end_station: str,
+                   train_info: Dict[str, bool],
+                   max_transfers: int = 2) -> List[Dict[str, Any]]:
+    """Enumerate paths between stations using DFS over fast_graph."""
+    paths: List[Dict[str, Any]] = []
+    start_nodes = [idx for idx, node in enumerate(nodes) if node[0] == start_station]
+
+    if not start_nodes:
+        return []
+
+    def dfs(current_idx: int,
+            current_time: int,
+            transfers_used: int,
+            path: List[int],
+            edge_history: List[Dict[str, Any]],
+            train_sequence: List[str],
+            start_time: int):
+        station_name = nodes[current_idx][0]
+
+        # Reached destination; require at least one edge in the journey
+        if station_name == end_station and edge_history:
+            path_summary = summarize_path(
+                nodes,
+                edge_history,
+                train_sequence,
+                start_time,
+                current_time,
+                train_info
+            )
+            paths.append(path_summary)
             return
-        
-        # Explore neighbors
-        for neighbor, travel_time in adj[current_node]:
-            # if neighbor in visited_nodes:  # Temporarily remove to check for cycles
-            #     continue
-            neighbor_station = nodes[neighbor][0]
-            neighbor_train = nodes[neighbor][1]
-            neighbor_time = parse_time(nodes[neighbor][2])
-            
-            arrival_time = current_arrival + travel_time
-            transfer_time = -20  # More flexibility
-            if neighbor_time <= arrival_time + transfer_time:
-                continue
-            
-            new_trains = current_trains + [neighbor_train]
-            new_transfers = current_transfers[:]
-            new_transfer_count = transfer_count
-            if neighbor_train != nodes[current_node][1]:
-                # Transfer at current_station
-                if current_station not in new_transfers:
-                    new_transfers.append(current_station)
-                    new_transfer_count += 1
-                if new_transfer_count > 2:
-                    continue
-            
-            dfs(neighbor, neighbor_time, path + [neighbor], visited_nodes | {neighbor}, new_trains, new_transfers, start_time, new_transfer_count)
-        
-        # Logic for transfers (Virtual Edges)
-        if len(path) > 1 and current_station in fast_stations and transfer_count < 2:
-            candidates = station_index.get(current_station, [])
-            current_train_id = nodes[current_node][1]
-            
-            min_time = current_arrival + 15
-            max_time = current_arrival + 90
-            
-            for cand_time, cand_idx, cand_train in candidates:
-                # Since candidates are sorted by time, we can optimize
-                if cand_time < min_time:
-                    continue
-                if cand_time > max_time:
-                    break
-                
-                # Cannot transfer to the same train
-                if cand_train == current_train_id:
-                    continue
-                
-                # Execute transfer
-                # Note: We treat this as a new step in the path
-                new_transfers_transfer = current_transfers + [current_station]
-                new_trains_transfer = current_trains + [cand_train]
-                
-                # Avoid cycles
-                if cand_idx in visited_nodes:
-                    continue
 
-                dfs(cand_idx, cand_time, path + [cand_idx], visited_nodes | {cand_idx}, 
-                    new_trains_transfer, new_transfers_transfer, start_time, transfer_count + 1)
-    
-    for start_node in start_nodes:
-        start_time = parse_time(nodes[start_node][2])
-        dfs(start_node, start_time, [start_node], {start_node}, [nodes[start_node][1]], [], start_time, 0)
-    
+        for edge in adjacency.get(current_idx, []):
+            neighbor_idx = edge['to']
+            if neighbor_idx in path:
+                continue
+
+            neighbor_train = nodes[neighbor_idx][1]
+            current_train = nodes[current_idx][1]
+
+            edge_duration = edge['duration']
+            if edge_duration <= 0:
+                continue
+
+            next_time = current_time + edge_duration
+
+            next_transfers = transfers_used
+            if edge['type'] == 'transfer' or neighbor_train != current_train:
+                next_transfers += 1
+            if next_transfers > max_transfers:
+                continue
+
+            if train_sequence and neighbor_train == train_sequence[-1]:
+                next_train_sequence = train_sequence
+            else:
+                next_train_sequence = train_sequence + [neighbor_train]
+
+            path.append(neighbor_idx)
+            edge_history.append({
+                'from': current_idx,
+                'to': neighbor_idx,
+                'type': edge['type'],
+                'duration': edge_duration
+            })
+
+            dfs(
+                neighbor_idx,
+                next_time,
+                next_transfers,
+                path,
+                edge_history,
+                next_train_sequence,
+                start_time
+            )
+
+            edge_history.pop()
+            path.pop()
+
+    for start_idx in start_nodes:
+        start_time = parse_time(nodes[start_idx][2])
+        start_train = nodes[start_idx][1]
+        dfs(
+            current_idx=start_idx,
+            current_time=start_time,
+            transfers_used=0,
+            path=[start_idx],
+            edge_history=[],
+            train_sequence=[start_train],
+            start_time=start_time
+        )
+
+    # Assign identifiers and sort by total duration then departure
+    paths.sort(key=lambda item: (item['total_minutes'], item['departure_time']))
+    for idx, entry in enumerate(paths, start=1):
+        entry['id'] = idx
+
     return paths
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Find direct train paths using DFS.')
-    parser.add_argument('--start', required=True, help='Start station ID')
-    parser.add_argument('--end', required=True, help='End station ID')
+    parser = argparse.ArgumentParser(description='Enumerate intercity paths with up to two transfers.')
+    parser.add_argument('--start', required=True, help='Start station name')
+    parser.add_argument('--end', required=True, help='End station name')
     parser.add_argument('--schedule', default='schedule_list.json', help='Path to schedule JSON file')
-    parser.add_argument('--fast_stations', default='fast_station_list.json', help='Path to fast station list JSON file')
-    parser.add_argument('--graph', default='graph/timetable_graph.json', help='Path to graph JSON file')
+    parser.add_argument('--graph', default='graph/fast_graph.json', help='Path to fast graph JSON file')
     parser.add_argument('--output', default='Result_Finding/all_paths.json', help='Output JSON file')
-    
+    parser.add_argument('--max_transfers', type=int, default=2, help='Maximum number of transfers allowed')
+
     args = parser.parse_args()
-    
+
     graph_path = Path(args.graph)
     if not graph_path.exists():
         print(f"Graph file {graph_path} not found.")
         return
-    
+
+    schedule_path = Path(args.schedule)
+    if not schedule_path.exists():
+        print(f"Schedule file {schedule_path} not found.")
+        return
+
     nodes, edges = load_graph(graph_path)
-    adj = build_adjacency_list(nodes, edges)
-    train_info = load_schedule(args.schedule)
-    fast_stations = load_fast_stations(args.fast_stations)
-    
-    paths = find_all_paths(nodes, adj, args.start, args.end, train_info, fast_stations)
-    
-    # Generate output filename based on start and end stations
+    adjacency = build_adjacency(nodes, edges)
+    train_info = load_schedule(schedule_path)
+
+    paths = find_all_paths(
+        nodes,
+        adjacency,
+        args.start,
+        args.end,
+        train_info,
+        max_transfers=args.max_transfers
+    )
+
     output_filename = f"path_{args.start}_{args.end}.json"
-    output_path = Path("Result_Finding") / output_filename
-    
+    output_path = Path('Result_Finding') / output_filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(paths, f, ensure_ascii=False, indent=2)
-    
-    # Statistics for direct paths
+
     direct_paths = [p for p in paths if p['type'] == 'Direct']
     total_direct = len(direct_paths)
     fast_direct = len([p for p in direct_paths if p['is_fast']])
     slow_direct = total_direct - fast_direct
-    
+
+    transfer_breakdown = {0: 0, 1: 0, 2: 0}
+    for p in paths:
+        count = min(max(p.get('transfer_count', 0), 0), 2)
+        transfer_breakdown[count] = transfer_breakdown.get(count, 0) + 1
+
     print(f"Found {len(paths)} total paths. Results saved to {output_path}")
+    print(
+        "Transfer breakdown: Direct={0}, One-transfer={1}, Two-transfer={2}".format(
+            transfer_breakdown.get(0, 0),
+            transfer_breakdown.get(1, 0),
+            transfer_breakdown.get(2, 0)
+        )
+    )
     print(f"Direct paths: Total {total_direct}, Fast {fast_direct}, Slow {slow_direct}")
 
+
 if __name__ == '__main__':
-    main()
+    # Entry point: enumerate intercity itineraries (0-2 transfers). Usage:
+    # python DFS_PathFinding/find_paths_dfs.py --start <起点站> --end <终点站>
+        # 通过命令行传入起终点/图/时刻表/换乘上限，生成所有可行方案
+        main()
