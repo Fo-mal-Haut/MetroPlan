@@ -3,17 +3,19 @@
 功能：
     - 读取 `graph/fast_graph.json`（包含行车 + 换乘边）和 `schedule_list.json`；
     - 以车站名字为起终点，深度优先遍历所有满足换乘次数上限的路径；
-    - 输出每条方案的车次序列、换乘细节、总时长等信息。
+    - 输出每条方案的车次序列、换乘细节、总时长等信息；
+    - 多条方案车次序列一致时自动合并，并列出所有可选换乘站。
 
 使用方法示例：
     python DFS_PathFinding/find_paths_dfs.py --start 琶洲 --end 西平西 \
         --graph graph/fast_graph.json --schedule schedule_list.json \
-        --max_transfers 2
+        --max_transfers 2 --window_minutes 120
     结果默认写入 `Result_Finding/path_起点_终点.json`。
 """
 
 import json
 import argparse
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -48,8 +50,6 @@ def to_time(total_minutes: int) -> str:
     hours = total_minutes // 60
     minutes = total_minutes % 60
     return f"{hours:02d}:{minutes:02d}"
-
-
 def build_adjacency(nodes: List[List[str]], edges: List[Dict[str, Any]]):
     """Construct adjacency list with edge metadata."""
     node_lookup = {tuple(node): idx for idx, node in enumerate(nodes)}
@@ -84,6 +84,7 @@ def summarize_path(nodes: List[List[str]],
     """Create a summary object for a completed path."""
     timeline = start_time
     transfer_details: List[Dict[str, Any]] = []
+    # 如多条方案车次序列相同，则合并为一条，并列出所有可选换乘站。
 
     for edge in edge_history:
         prev_time = timeline
@@ -223,6 +224,63 @@ def find_all_paths(nodes: List[List[str]],
     return paths
 
 
+def merge_paths_by_train_sequence(paths: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Merge paths that share identical train sequences and timing while aggregating transfer options."""
+    grouped: Dict[tuple, Dict[str, Any]] = {}
+    ordered_keys: List[tuple] = []
+
+    for entry in paths:
+        transfer_count = entry.get('transfer_count', len(entry.get('transfer_details', [])))
+        key = (
+            tuple(entry.get('train_sequence', [])),
+            entry.get('type'),
+            transfer_count,
+            entry.get('departure_time'),
+            entry.get('arrival_time'),
+            entry.get('total_minutes')
+        )
+
+        if key not in grouped:
+            base = deepcopy(entry)
+            if transfer_count > 0:
+                option_lists: List[List[Dict[str, Any]]] = [[] for _ in range(transfer_count)]
+                for idx, detail in enumerate(entry.get('transfer_details', [])):
+                    option_lists[idx].append(deepcopy(detail))
+                base['_transfer_option_lists'] = option_lists
+            grouped[key] = base
+            ordered_keys.append(key)
+            continue
+
+        base = grouped[key]
+        if transfer_count == 0:
+            continue
+        option_lists = base.setdefault('_transfer_option_lists', [[] for _ in range(transfer_count)])
+        details = entry.get('transfer_details', [])
+        for idx, detail in enumerate(details):
+            if idx >= len(option_lists):
+                option_lists.append([])
+            if not any(existing == detail for existing in option_lists[idx]):
+                option_lists[idx].append(deepcopy(detail))
+
+    merged: List[Dict[str, Any]] = []
+    for key in ordered_keys:
+        base = grouped[key]
+        option_lists = base.pop('_transfer_option_lists', None)
+        if option_lists:
+            base['transfer_options'] = [
+                {
+                    'step': idx + 1,
+                    'options': option_list
+                }
+                for idx, option_list in enumerate(option_lists)
+                if option_list
+            ]
+            base['transfer_details'] = [opts[0] for opts in option_lists if opts]
+        merged.append(base)
+
+    return merged
+
+
 def main():
     parser = argparse.ArgumentParser(description='Enumerate intercity paths with up to two transfers.')
     parser.add_argument('--start', required=True, help='Start station name')
@@ -231,6 +289,8 @@ def main():
     parser.add_argument('--graph', default='graph/fast_graph.json', help='Path to fast graph JSON file')
     parser.add_argument('--output', default='Result_Finding/all_paths.json', help='Output JSON file')
     parser.add_argument('--max_transfers', type=int, default=2, help='Maximum number of transfers allowed')
+    parser.add_argument('--window_minutes', type=int, default=120,
+                        help='Keep paths whose total_minutes <= (fastest + window). Default: 120 (2h).')
 
     args = parser.parse_args()
 
@@ -248,7 +308,7 @@ def main():
     adjacency = build_adjacency(nodes, edges)
     train_info = load_schedule(schedule_path)
 
-    paths = find_all_paths(
+    all_paths = find_all_paths(
         nodes,
         adjacency,
         args.start,
@@ -256,6 +316,22 @@ def main():
         train_info,
         max_transfers=args.max_transfers
     )
+
+    if not all_paths:
+        print("No feasible paths were found with the current constraints.")
+        return
+
+    fastest_minutes = min(p['total_minutes'] for p in all_paths)
+    window_minutes = max(args.window_minutes, 0)
+    cutoff_minutes = fastest_minutes + window_minutes
+    filtered_paths = [p for p in all_paths if p['total_minutes'] <= cutoff_minutes]
+
+    # Ensure deterministic order before merging
+    filtered_paths.sort(key=lambda item: (item['total_minutes'], item['departure_time']))
+
+    paths = merge_paths_by_train_sequence(filtered_paths)
+    for idx, entry in enumerate(paths, start=1):
+        entry['id'] = idx
 
     output_filename = f"path_{args.start}_{args.end}.json"
     output_path = Path('Result_Finding') / output_filename
@@ -273,7 +349,12 @@ def main():
         count = min(max(p.get('transfer_count', 0), 0), 2)
         transfer_breakdown[count] = transfer_breakdown.get(count, 0) + 1
 
-    print(f"Found {len(paths)} total paths. Results saved to {output_path}")
+    print(
+    f"Found {len(all_paths)} raw paths. Fastest duration: {fastest_minutes} min. "
+    f"Keeping {len(filtered_paths)} paths within +{window_minutes} min; "
+    f"after merging identical train sequences, {len(paths)} remain."
+    )
+    print(f"Results saved to {output_path}")
     print(
         "Transfer breakdown: Direct={0}, One-transfer={1}, Two-transfer={2}".format(
             transfer_breakdown.get(0, 0),
@@ -287,5 +368,5 @@ def main():
 if __name__ == '__main__':
     # Entry point: enumerate intercity itineraries (0-2 transfers). Usage:
     # python DFS_PathFinding/find_paths_dfs.py --start <起点站> --end <终点站>
-        # 通过命令行传入起终点/图/时刻表/换乘上限，生成所有可行方案
-        main()
+    # 通过命令行传入起终点/图/时刻表/换乘上限，生成所有可行方案
+    main()
