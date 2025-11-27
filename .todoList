@@ -1,3 +1,0 @@
-TODO: Implement DFS-based path search loading timetable_graph.json.
-TODO: Add CLI argument parsing for DFS planner parameters.
-TODO: Persist DFS results into Result_Finding as JSON with train sequences and transfer stations.

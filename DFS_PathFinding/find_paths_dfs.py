@@ -16,6 +16,7 @@
 import json
 import argparse
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -27,11 +28,33 @@ def load_graph(graph_file: Path):
     return data['nodes'], data['edges']
 
 
-def load_schedule(schedule_file: Path) -> Dict[str, bool]:
-    """Load schedule list to get train fast/slow classification."""
+def load_schedule(schedule_file: Path) -> Dict[str, Any]:
+    """Load schedule list and return a mapping train_id -> train info dict.
+    The info will at least include 'is_fast'. It may include 'directionality' too.
+    """
     with open(schedule_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    return {train['id']: train['is_fast'] for train in data['train']}
+    info = {}
+    for train in data.get('train', []):
+        info[train['id']] = {
+            'is_fast': train.get('is_fast', False),
+            'directionality': train.get('directionality')
+        }
+    return info
+
+
+def load_directionality_map(schedule_file: Path) -> Dict[str, List[int]]:
+    """Return a mapping train_id -> direction vector for trains that provide it.
+    If schedule file does not contain 'directionality', the train will not be present in the result.
+    """
+    with open(schedule_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    out = {}
+    for train in data.get('train', []):
+        v = train.get('directionality')
+        if isinstance(v, list):
+            out[train['id']] = v
+    return out
 
 
 def parse_time(time_str: str) -> int:
@@ -126,7 +149,8 @@ def find_all_paths(nodes: List[List[str]],
                    adjacency: Dict[int, List[Dict[str, Any]]],
                    start_station: str,
                    end_station: str,
-                   train_info: Dict[str, bool],
+                   train_info: Dict[str, Any],
+                   direction_map: Dict[str, List[int]] | None = None,
                    max_transfers: int = 2) -> List[Dict[str, Any]]:
     """Enumerate paths between stations using DFS over fast_graph."""
     paths: List[Dict[str, Any]] = []
@@ -154,6 +178,27 @@ def find_all_paths(nodes: List[List[str]],
                 current_time,
                 train_info
             )
+            # If this path contains transfers, check directionality consistency
+            if direction_map and path_summary.get('transfer_count', 0) > 0:
+                # For adjacent trains, ensure no opposite directions on any line
+                seq = path_summary.get('train_sequence', [])
+                invalid = False
+                for i in range(len(seq) - 1):
+                    a = direction_map.get(seq[i])
+                    b = direction_map.get(seq[i+1])
+                    if not a or not b:
+                        # if either train lacks directionality info, skip consistency check
+                        continue
+                    # check for opposite direction on any line: a_j == -b_j
+                    for j in range(min(len(a), len(b))):
+                        if a[j] != 0 and b[j] != 0 and a[j] == -b[j]:
+                            invalid = True
+                            break
+                    if invalid:
+                        break
+                if invalid:
+                    # drop this path (do not append)
+                    return
             paths.append(path_summary)
             return
 
@@ -307,6 +352,13 @@ def main():
     nodes, edges = load_graph(graph_path)
     adjacency = build_adjacency(nodes, edges)
     train_info = load_schedule(schedule_path)
+    # try to load directionality mapping from a schedule that contains directionality
+    direction_map = {}
+    try:
+        direction_map = load_directionality_map(schedule_path)
+    except Exception:
+        # Not fatal; the provided schedule may not include directionality vectors
+        direction_map = {}
 
     all_paths = find_all_paths(
         nodes,
@@ -314,6 +366,7 @@ def main():
         args.start,
         args.end,
         train_info,
+        direction_map=direction_map,
         max_transfers=args.max_transfers
     )
 
@@ -336,8 +389,23 @@ def main():
     output_filename = f"path_{args.start}_{args.end}.json"
     output_path = Path('Result_Finding') / output_filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    output_payload = {
+        'start_station': args.start,
+        'end_station': args.end,
+        'generated_at': datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds'),
+        'summary': {
+            'raw_path_count': len(all_paths),
+            'window_minutes': window_minutes,
+            'fastest_minutes': fastest_minutes,
+            'filtered_path_count': len(filtered_paths),
+            'merged_path_count': len(paths)
+        },
+        'paths': paths
+    }
+
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(paths, f, ensure_ascii=False, indent=2)
+        json.dump(output_payload, f, ensure_ascii=False, indent=2)
 
     direct_paths = [p for p in paths if p['type'] == 'Direct']
     total_direct = len(direct_paths)
