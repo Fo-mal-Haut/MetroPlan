@@ -330,7 +330,7 @@ def main():
     parser = argparse.ArgumentParser(description='Enumerate intercity paths with up to two transfers.')
     parser.add_argument('--start', required=True, help='Start station name')
     parser.add_argument('--end', required=True, help='End station name')
-    parser.add_argument('--schedule', default='schedule_list.json', help='Path to schedule JSON file')
+    parser.add_argument('--schedule', default='schedule_with_directionality.json', help='Path to schedule JSON file')
     parser.add_argument('--graph', default='graph/fast_graph.json', help='Path to fast graph JSON file')
     parser.add_argument('--output', default='Result_Finding/all_paths.json', help='Output JSON file')
     parser.add_argument('--max_transfers', type=int, default=2, help='Maximum number of transfers allowed')

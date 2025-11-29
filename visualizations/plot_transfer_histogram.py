@@ -20,14 +20,31 @@ import matplotlib.pyplot as plt
 
 
 def load_transfer_times(results_path: Path) -> Dict[int, List[int]]:
-    grouped: Dict[int, List[int]] = {0: [], 1: [], 2: [], -1: []}
+    # 返回 grouped maps
     with results_path.open('r', encoding='utf-8') as fp:
         data = json.load(fp)
 
-    if isinstance(data, dict) and 'train' in data:
-        raise ValueError('Expected path result list, got schedule-style JSON.')
+    # 兼容不同的输出 container
+    if isinstance(data, dict):
+        # path results from find_paths_dfs.py: {start_station, end_station, summary, paths}
+        if 'paths' in data and isinstance(data['paths'], list):
+            entries = data['paths']
+        # schedule file: reject or raise
+        elif 'train' in data:
+            raise ValueError('Expected path result list, got schedule-style JSON.')
+        else:
+            # Unknown dict shape: maybe keys are strings ... not supported
+            raise ValueError("Unsupported JSON structure: expected top-level list or {'paths': list}")
+    elif isinstance(data, list):
+        entries = data
+    else:
+        raise ValueError("Unsupported JSON type: expected list or dict with 'paths'")
 
-    for entry in data:
+    grouped: Dict[int, List[int]] = {0: [], 1: [], 2: [], -1: []}
+    for entry in entries:
+        # now entry is guaranteed to be a dict
+        if not isinstance(entry, dict):
+            continue
         minutes = entry.get('total_minutes')
         transfers = entry.get('transfer_count')
         if minutes is None or transfers is None:
