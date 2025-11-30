@@ -151,21 +151,26 @@ def find_all_paths(nodes: List[List[str]],
                    end_station: str,
                    train_info: Dict[str, Any],
                    direction_map: Dict[str, List[int]] | None = None,
-                   max_transfers: int = 2) -> List[Dict[str, Any]]:
+                   max_transfers: int = 2,
+                   allow_same_station_consecutive_transfers: bool = False) -> List[Dict[str, Any]]:
     """Enumerate paths between stations using DFS over fast_graph."""
     paths: List[Dict[str, Any]] = []
+    stats = {
+        'skipped_same_station_transfers': 0
+    }
     start_nodes = [idx for idx, node in enumerate(nodes) if node[0] == start_station]
 
     if not start_nodes:
         return []
 
     def dfs(current_idx: int,
-            current_time: int,
-            transfers_used: int,
-            path: List[int],
-            edge_history: List[Dict[str, Any]],
-            train_sequence: List[str],
-            start_time: int):
+        current_time: int,
+        transfers_used: int,
+        path: List[int],
+        edge_history: List[Dict[str, Any]],
+        train_sequence: List[str],
+        start_time: int,
+        last_transfer_station: str | None = None):
         station_name = nodes[current_idx][0]
 
         # Reached destination; require at least one edge in the journey
@@ -217,7 +222,15 @@ def find_all_paths(nodes: List[List[str]],
             next_time = current_time + edge_duration
 
             next_transfers = transfers_used
-            if edge['type'] == 'transfer' or neighbor_train != current_train:
+            is_transfer_now = (edge['type'] == 'transfer') or (neighbor_train != current_train)
+            # compute transfer station when we are making a transfer: usually current station
+            transfer_station = nodes[current_idx][0] if is_transfer_now else None
+            # If consecutive transfers at the same station are not allowed, skip this transfer
+            if is_transfer_now and not allow_same_station_consecutive_transfers and last_transfer_station is not None:
+                if transfer_station == last_transfer_station:
+                    stats['skipped_same_station_transfers'] += 1
+                    continue
+            if is_transfer_now:
                 next_transfers += 1
             if next_transfers > max_transfers:
                 continue
@@ -242,7 +255,8 @@ def find_all_paths(nodes: List[List[str]],
                 path,
                 edge_history,
                 next_train_sequence,
-                start_time
+                start_time,
+                (transfer_station if is_transfer_now else last_transfer_station)
             )
 
             edge_history.pop()
@@ -266,7 +280,7 @@ def find_all_paths(nodes: List[List[str]],
     for idx, entry in enumerate(paths, start=1):
         entry['id'] = idx
 
-    return paths
+    return paths, stats
 
 
 def merge_paths_by_train_sequence(paths: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -336,6 +350,8 @@ def main():
     parser.add_argument('--max_transfers', type=int, default=2, help='Maximum number of transfers allowed')
     parser.add_argument('--window_minutes', type=int, default=120,
                         help='Keep paths whose total_minutes <= (fastest + window). Default: 120 (2h).')
+    parser.add_argument('--allow_same_station_consecutive_transfers', action='store_true',
+                        help='Allow consecutive transfers at the same station (default: disallow)')
 
     args = parser.parse_args()
 
@@ -360,14 +376,15 @@ def main():
         # Not fatal; the provided schedule may not include directionality vectors
         direction_map = {}
 
-    all_paths = find_all_paths(
+    all_paths, stats = find_all_paths(
         nodes,
         adjacency,
         args.start,
         args.end,
         train_info,
         direction_map=direction_map,
-        max_transfers=args.max_transfers
+        max_transfers=args.max_transfers,
+        allow_same_station_consecutive_transfers=args.allow_same_station_consecutive_transfers
     )
 
     if not all_paths:
@@ -403,6 +420,9 @@ def main():
         },
         'paths': paths
     }
+    # Include stats if present
+    if isinstance(stats, dict):
+        output_payload['summary'].update(stats)
 
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(output_payload, f, ensure_ascii=False, indent=2)
@@ -423,6 +443,9 @@ def main():
     f"after merging identical train sequences, {len(paths)} remain."
     )
     print(f"Results saved to {output_path}")
+    # print any statistics returned by find_all_paths
+    if isinstance(stats, dict):
+        print(f"Skipped same-station consecutive transfers: {stats.get('skipped_same_station_transfers', 0)}")
     print(
         "Transfer breakdown: Direct={0}, One-transfer={1}, Two-transfer={2}".format(
             transfer_breakdown.get(0, 0),
