@@ -1,5 +1,6 @@
 # Ignore data folders and JSON data files
 /车次信息/
+*.md
 *.json
 
 # Python caches and virtual envs (optional, safe defaults)
