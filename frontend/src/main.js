@@ -1,8 +1,9 @@
 import Vue from 'vue'
 
 // main.js
-import uView from 'uview-ui'
-Vue.use(uView)
+import uView from "uview-ui";
+Vue.use(uView);
+
 
 import App from './App'
 

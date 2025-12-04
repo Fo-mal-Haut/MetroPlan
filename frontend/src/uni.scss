@@ -14,8 +14,8 @@
 
 /* 颜色变量 */
 
-// ✅ 正确写法（适用于 npm 安装）
-@import 'uview-ui/theme.scss'; // 注意：不需要 ~，也不需要 @
+/* uni.scss */
+@import 'uview-ui/theme.scss';
 
 /* 行为相关颜色 */
 $uni-color-primary: #007aff;
