@@ -125,6 +125,7 @@
 </template>
 
 <script>
+import { computePaths, listStations } from '@/algorithms/run_find_paths_demo';
 	export default {
 		data() {
 			return {
@@ -141,7 +142,7 @@
 			console.log('Page loaded')
 		},
 		methods: {
-			// 查询路径
+			// 查询路径 (使用前端本地算法替代后端 API)
 			queryPath() {
 				// 验证输入
 				if (!this.startStation.trim()) {
@@ -163,95 +164,51 @@
 
 				// 开始加载
 				this.loading = true
-
-				// 调用API
-				uni.request({
-					url: `${this.apiBaseUrl}/path`,
-					method: 'POST',
-					header: {
-						'Content-Type': 'application/json'
-					},
-					data: {
-						start_station: this.startStation,
-						end_station: this.endStation,
-						max_transfers: 2
-					},
-					success: (res) => {
+				computePaths(this.startStation.trim(), this.endStation.trim(), 2, 90, false)
+					.then((resp) => {
 						this.loading = false
-						if (res.statusCode === 200) {
-							const data = res.data
-							if (data.paths && data.paths.length > 0) {
-								this.results = data.paths
-								this.$refs.uToast.show({
-									title: `找到${data.paths.length}条路径`,
-									type: 'success',
-									duration: 1000
-								})
-							} else {
-								this.results = []
-								this.$refs.uToast.show({
-									title: '未找到路径',
-									type: 'warning',
-									duration: 2000
-								})
-							}
-						} else {
+						const data = resp
+						if (data.paths && data.paths.length > 0) {
+							this.results = data.paths
 							this.$refs.uToast.show({
-								title: res.data.error || '查询失败',
-								type: 'error',
+								title: `找到${data.paths.length}条路径`,
+								type: 'success',
+								duration: 1000
+							})
+						} else {
+							this.results = []
+							this.$refs.uToast.show({
+								title: '未找到路径',
+								type: 'warning',
 								duration: 2000
 							})
 						}
-					},
-					fail: (error) => {
+					})
+					.catch((err) => {
 						this.loading = false
-						console.error('API请求失败:', error)
+						console.error('本地算法执行失败:', err)
 						this.$refs.uToast.show({
-							title: '网络错误，请检查API是否运行',
+							title: '路径查询出错（本地）',
 							type: 'error',
 							duration: 2000
 						})
-					}
-				})
+					})
 			},
 
-			// 获取车站列表
+			// 获取车站列表 (从静态 JSON 提取)
 			getStations() {
 				this.loadingStations = true
-				
-				uni.request({
-					url: `${this.apiBaseUrl}/stations`,
-					method: 'GET',
-					success: (res) => {
+				listStations()
+					.then((arr) => {
 						this.loadingStations = false
-						if (res.statusCode === 200) {
-							const data = res.data
-							if (data.stations && data.stations.length > 0) {
-								this.stationsList = data.stations
-								this.$refs.uToast.show({
-									title: `已加载${data.count}个车站`,
-									type: 'success',
-									duration: 1000
-								})
-							}
-						} else {
-							this.$refs.uToast.show({
-								title: res.data.error || '获取车站列表失败',
-								type: 'error',
-								duration: 2000
-							})
-						}
-					},
-					fail: (error) => {
+						this.stationsList = arr
+						this.$refs.uToast.show({ title: `已加载${arr.length}个车站`, type: 'success', duration: 1000 })
+					})
+					.catch((err) => {
 						this.loadingStations = false
-						console.error('获取车站列表失败:', error)
-						this.$refs.uToast.show({
-							title: '网络错误，请检查API是否运行',
-							type: 'error',
-							duration: 2000
-						})
-					}
-				})
+						console.error('加载车站失败:', err)
+						this.$refs.uToast.show({ title: '加载车站失败（本地）', type: 'error', duration: 2000 })
+					})
 			}
 		}
 	}

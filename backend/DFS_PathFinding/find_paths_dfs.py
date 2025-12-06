@@ -9,7 +9,7 @@
 使用方法示例：
     python DFS_PathFinding/find_paths_dfs.py --start 琶洲 --end 西平西 \
         --graph graph/fast_graph.json --schedule schedule_list.json \
-        --max_transfers 2 --window_minutes 120
+        --max_transfers 2 --window_minutes 90
     结果默认写入 `Result_Finding/path_起点_终点.json`。
 """
 
@@ -348,7 +348,7 @@ def main():
     parser.add_argument('--graph', default='graph/fast_graph.json', help='Path to fast graph JSON file')
     parser.add_argument('--output', default='Result_Finding/all_paths.json', help='Output JSON file')
     parser.add_argument('--max_transfers', type=int, default=2, help='Maximum number of transfers allowed')
-    parser.add_argument('--window_minutes', type=int, default=120,
+    parser.add_argument('--window_minutes', type=int, default=90,
                         help='Keep paths whose total_minutes <= (fastest + window). Default: 120 (2h).')
     parser.add_argument('--allow_same_station_consecutive_transfers', action='store_true',
                         help='Allow consecutive transfers at the same station (default: disallow)')
