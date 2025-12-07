@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  metro-plan-backend:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CORS_ORIGIN=*
+    volumes:
+      - ./fast_graph.json:/app/fast_graph.json:ro
+      - ./schedule_with_directionality.json:/app/schedule_with_directionality.json:ro
+      - ./logs:/app/logs
+      - ./results:/app/results
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - metro-plan-network
+
+networks:
+  metro-plan-network:
+    driver: bridge
