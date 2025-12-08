@@ -161,18 +161,6 @@ router.post('/find', validatePathfindingRequest, asyncHandler(async (req, res) =
       }
     };
 
-    // Optionally save results to file
-    if (process.env.NODE_ENV === 'development') {
-      try {
-        const resultsDir = process.env.RESULTS_DIR || './results';
-        const filename = `path_${startStation}_${endStation}.json`;
-        await dataService.saveResults(response, filename, resultsDir);
-        console.log(`Results saved to ${filename}`);
-      } catch (saveError) {
-        console.warn('Failed to save results to file:', saveError.message);
-      }
-    }
-
     console.log(
       `Found ${allPaths.length} raw paths. Fastest duration: ${fastestMinutes} min. ` +
       `Keeping ${filteredPaths.length} paths within +${finalWindowMinutes} min; ` +

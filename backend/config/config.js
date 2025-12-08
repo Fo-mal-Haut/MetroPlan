@@ -18,7 +18,7 @@ const config = {
   // Algorithm parameters
   algorithm: {
     maxTransfers: parseInt(process.env.MAX_TRANSFERS) || 2,
-    timeWindowMinutes: parseInt(process.env.TIME_WINDOW_MINUTES) || 120,
+    timeWindowMinutes: parseInt(process.env.TIME_WINDOW_MINUTES) || 90,
     allowSameStationTransfers: process.env.ALLOW_SAME_STATION_TRANSFERS === 'true'
   },
 

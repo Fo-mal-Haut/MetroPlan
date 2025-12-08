@@ -134,7 +134,7 @@
 				stationsList: [],
 				loading: false,
 				loadingStations: false,
-				apiBaseUrl: 'http://localhost:5000'
+				apiBaseUrl: 'http://localhost:3000'
 			}
 		},
 		onLoad() {
@@ -166,7 +166,7 @@
 
 				// 调用API
 				uni.request({
-					url: `${this.apiBaseUrl}/path`,
+					url: `${this.apiBaseUrl}/api/pathfinding/find`,
 					method: 'POST',
 					header: {
 						'Content-Type': 'application/json'
@@ -220,7 +220,7 @@
 				this.loadingStations = true
 				
 				uni.request({
-					url: `${this.apiBaseUrl}/stations`,
+					url: `${this.apiBaseUrl}/api/pathfinding/stations`,
 					method: 'GET',
 					success: (res) => {
 						this.loadingStations = false
