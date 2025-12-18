@@ -1,10 +1,11 @@
-const express = require('express');
+import express from 'express';
+import DataService from '../services/dataService.js';
+import PathfindingService from '../services/pathfindingService.js';
+import { validatePathfindingRequest } from '../middleware/validation.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import path from 'path';
+
 const router = express.Router();
-const DataService = require('../services/dataService');
-const PathfindingService = require('../services/pathfindingService');
-const { validatePathfindingRequest } = require('../middleware/validation');
-const { asyncHandler } = require('../middleware/errorHandler');
-const path = require('path');
 
 // Initialize services
 const dataService = new DataService();
@@ -270,4 +271,4 @@ router.get('/status', (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

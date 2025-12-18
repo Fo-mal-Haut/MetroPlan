@@ -1,12 +1,17 @@
-const express = require('express');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const path = require('path');
+import express from 'express';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url'; // 新增
 
-const config = require('./config/config');
-const { configureCORS, createRateLimiter, createRequestTimeout } = require('./middleware/validation');
-const { errorHandler, notFoundHandler, setupGracefulShutdown } = require('./middleware/errorHandler');
-const pathfindingRoutes = require('./routes/pathfinding');
+// 修复 ESM 下没有 __dirname 的问题
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import config from '../../config/config.js';
+import { configureCORS, createRateLimiter, createRequestTimeout } from '../../middleware/validation.js';
+import { errorHandler, notFoundHandler } from '../../middleware/errorHandler.js';
+import pathfindingRoutes from '../../routes/pathfinding.js';
 
 const app = express();
 
@@ -47,7 +52,7 @@ app.use(express.json({ limit: config.api.maxRequestSize }));
 app.use(express.urlencoded({ extended: true, limit: config.api.maxRequestSize }));
 
 // Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../../public')));
 
 // API Routes
 app.use('/api/pathfinding', pathfindingRoutes);
@@ -77,14 +82,5 @@ app.get('/', (req, res) => {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// Start server
-const server = app.listen(config.server.port, () => {
-  console.log(`Metro Plan Backend server running on port ${config.server.port}`);
-  console.log(`Environment: ${config.server.nodeEnv}`);
-  console.log(`CORS Origin: ${config.server.corsOrigin}`);
-});
-
-// Setup graceful shutdown
-setupGracefulShutdown(server);
-
-module.exports = app;
+// 重要：必须导出实例，且不能有 app.listen()
+export default app;

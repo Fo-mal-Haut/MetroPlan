@@ -1,5 +1,5 @@
-const fs = require('fs').promises;
-const path = require('path');
+import fs from 'fs/promises.js';
+import path from 'path.js';
 
 class DataService {
   constructor() {
@@ -176,4 +176,4 @@ class DataService {
   }
 }
 
-module.exports = DataService;
+export default DataService;

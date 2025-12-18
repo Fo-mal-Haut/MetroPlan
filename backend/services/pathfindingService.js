@@ -1,4 +1,4 @@
-const { parseTime, toTime, formatDuration } = require('../utils/timeUtils');
+import { parseTime, toTime, formatDuration } from '../utils/timeUtils.js';
 
 class PathfindingService {
   constructor() {
@@ -339,4 +339,4 @@ class PathfindingService {
   }
 }
 
-module.exports = PathfindingService;
+export default PathfindingService;

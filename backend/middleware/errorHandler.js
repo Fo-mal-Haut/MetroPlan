@@ -1,4 +1,4 @@
-const config = require('../config/config');
+import config from '../config/config.js';
 
 /**
  * Global error handling middleware
@@ -119,7 +119,7 @@ const setupGracefulShutdown = (server) => {
   });
 };
 
-module.exports = {
+export default {
   errorHandler,
   notFoundHandler,
   asyncHandler,

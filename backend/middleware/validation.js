@@ -1,4 +1,4 @@
-const config = require('../config/config');
+import config from '../config/config.js';
 
 /**
  * Validation middleware for pathfinding requests
@@ -180,7 +180,7 @@ const configureCORS = (req, res, next) => {
   next();
 };
 
-module.exports = {
+export default {
   validatePathfindingRequest,
   createRateLimiter,
   createRequestTimeout,
