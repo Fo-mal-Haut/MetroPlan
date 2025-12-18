@@ -1,4 +1,16 @@
 import config from '../config/config.js';
+import cors from 'cors';
+
+export const configureCORS = cors({
+  origin: [
+    'http://localhost:8080',
+    'http://10.193.2.241:8080',
+    // 如果以后有正式域名，也加在这里
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+});
 
 /**
  * Validation middleware for pathfinding requests
