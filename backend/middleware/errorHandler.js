@@ -3,7 +3,7 @@ import config from '../config/config.js';
 /**
  * Global error handling middleware
  */
-const errorHandler = (err, req, res, next) => {
+export const errorHandler = (err, req, res, next) => {
   console.error('Error occurred:', {
     message: err.message,
     stack: err.stack,
@@ -61,7 +61,7 @@ const errorHandler = (err, req, res, next) => {
 /**
  * 404 Not Found handler
  */
-const notFoundHandler = (req, res) => {
+export const notFoundHandler = (req, res, next) => {
   res.status(404).json({
     error: 'Not Found',
     message: 'The requested resource was not found',
@@ -71,18 +71,16 @@ const notFoundHandler = (req, res) => {
 };
 
 /**
- * Async error wrapper for route handlers
+ * Async handler wrapper to catch errors in async routes
  */
-const asyncHandler = (fn) => {
-  return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
+export const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 /**
- * Graceful shutdown handler
+ * Setup graceful shutdown for the server
  */
-const setupGracefulShutdown = (server) => {
+export const setupGracefulShutdown = (server) => {
   const gracefulShutdown = (signal) => {
     console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
 
@@ -117,11 +115,4 @@ const setupGracefulShutdown = (server) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     gracefulShutdown('unhandledRejection');
   });
-};
-
-export default {
-  errorHandler,
-  notFoundHandler,
-  asyncHandler,
-  setupGracefulShutdown
 };

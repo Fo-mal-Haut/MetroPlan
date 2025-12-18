@@ -1,7 +1,7 @@
-import fs from 'fs/promises.js';
-import path from 'path.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
-class DataService {
+export default class DataService {
   constructor() {
     this.graphData = null;
     this.scheduleData = null;
@@ -175,5 +175,3 @@ class DataService {
     }
   }
 }
-
-export default DataService;

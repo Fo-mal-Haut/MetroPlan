@@ -50,7 +50,7 @@ function formatDuration(minutes) {
   return `${hours}h ${mins}m`;
 }
 
-module.exports = {
+export {
   parseTime,
   toTime,
   timeDifference,

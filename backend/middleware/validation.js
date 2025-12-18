@@ -15,7 +15,7 @@ export const configureCORS = cors({
 /**
  * Validation middleware for pathfinding requests
  */
-const validatePathfindingRequest = (req, res, next) => {
+export const validatePathfindingRequest = (req, res, next) => {
   try {
     const { start_station, end_station, max_transfers, window_minutes } = req.body;
 
@@ -104,7 +104,7 @@ const validatePathfindingRequest = (req, res, next) => {
 /**
  * Rate limiting middleware (simple implementation)
  */
-const createRateLimiter = (maxRequests = 100, windowMs = 60000) => {
+export const createRateLimiter = (maxRequests = 100, windowMs = 60000) => {
   const requests = new Map();
 
   return (req, res, next) => {
@@ -145,7 +145,7 @@ const createRateLimiter = (maxRequests = 100, windowMs = 60000) => {
 /**
  * Request timeout middleware
  */
-const createRequestTimeout = (timeoutMs = config.api.requestTimeout) => {
+export const createRequestTimeout = (timeoutMs = config.api.requestTimeout) => {
   return (req, res, next) => {
     const timeout = setTimeout(() => {
       if (!res.headersSent) {
@@ -161,40 +161,4 @@ const createRequestTimeout = (timeoutMs = config.api.requestTimeout) => {
 
     next();
   };
-};
-
-/**
- * CORS configuration middleware
- */
-const configureCORS = (req, res, next) => {
-  const allowedOrigins = config.server.corsOrigin === '*'
-    ? '*'
-    : config.server.corsOrigin.split(',').map(origin => origin.trim());
-
-  if (allowedOrigins !== '*') {
-    const origin = req.headers.origin;
-    if (origin && allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-    }
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  next();
-};
-
-export default {
-  validatePathfindingRequest,
-  createRateLimiter,
-  createRequestTimeout,
-  configureCORS
 };

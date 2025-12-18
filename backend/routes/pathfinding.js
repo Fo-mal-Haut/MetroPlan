@@ -3,7 +3,7 @@ import DataService from '../services/dataService.js';
 import PathfindingService from '../services/pathfindingService.js';
 import { validatePathfindingRequest } from '../middleware/validation.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
-import path from 'path';
+import path from 'node:path';
 
 const router = express.Router();
 

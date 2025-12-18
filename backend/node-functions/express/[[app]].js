@@ -1,8 +1,8 @@
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
-import { fileURLToPath } from 'url'; // 新增
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // 修复 ESM 下没有 __dirname 的问题
 const __filename = fileURLToPath(import.meta.url);
