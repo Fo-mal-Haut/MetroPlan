@@ -1,8 +1,8 @@
 import express from 'express';
 import DataService from '../../../services/dataService.js';
 import PathfindingService from '../../../services/pathfindingService.js';
-import { validatePathfindingRequest } from '../../../middleware/validation.js';
-import { asyncHandler } from '../../../middleware/errorHandler.js';
+import { validatePathfindingRequest } from '../../middleware/validation.js';
+import { asyncHandler } from '../../middleware/errorHandler.js';
 import path from 'node:path';
 
 const router = express.Router();
@@ -61,7 +61,7 @@ router.post('/find', validatePathfindingRequest, asyncHandler(async (req, res) =
     allow_same_station_consecutive_transfers: allowSameStationTransfers
   } = req.body;
 
-  const config = require('../../../config/config.js');
+  const config = require('../../config/config.js');
 
   // Use provided values or defaults from config
   const finalMaxTransfers = maxTransfers !== undefined ? maxTransfers : config.algorithm.maxTransfers;

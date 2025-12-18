@@ -9,9 +9,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import config from '../../config/config.js';
-import { configureCORS, createRateLimiter, createRequestTimeout } from '../../middleware/validation.js';
-import { errorHandler, notFoundHandler } from '../../middleware/errorHandler.js';
-import pathfindingRoutes from '../../routes/pathfinding.js';
+import { configureCORS, createRateLimiter, createRequestTimeout } from '../middleware/validation.js';
+import { errorHandler, notFoundHandler } from '../middleware/errorHandler.js';
+import pathfindingRoutes from '../routes/pathfinding.js';
 
 const app = express();
 
