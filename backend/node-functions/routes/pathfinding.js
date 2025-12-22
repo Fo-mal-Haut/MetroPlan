@@ -1,6 +1,6 @@
 import express from 'express';
-import DataService from '../../../services/dataService.js';
-import PathfindingService from '../../../services/pathfindingService.js';
+import DataService from '../services/dataService.js';
+import PathfindingService from '../services/pathfindingService.js';
 import { validatePathfindingRequest } from '../middleware/validation.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import path from 'node:path';
